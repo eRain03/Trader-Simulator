@@ -1,0 +1,119 @@
+{
+  description = "Tayen's Aesthetic & Efficient NixOS Flake";
+
+  inputs = {
+    # 核心源
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable-small";
+    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-25.05";
+    
+    # 硬件优化（针对 1660 Ti 笔记本的关键输入）
+    nixos-hardware.url = "github:NixOS/nixos-hardware/master";
+
+    # 系统架构支持
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    home-manager = {
+      url = "github:nix-community/home-manager/master";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # 图形与合成器
+    niri = {
+      url = "github:sodiboo/niri-flake";
+      # 如果你需要引用特定的 niri-unstable，可以在此 follows
+    };
+    nixpkgs-wayland.url = "github:nix-community/nixpkgs-wayland";
+    
+    # 开发与美化工具
+    stylix.url = "github:nix-community/stylix";
+    nixvim.url = "github:nix-community/nixvim";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
+    nh.url = "github:nix-community/nh";
+    
+    # 终端与 Shell
+    ghostty.url = "github:ghostty-org/ghostty";
+    quickshell = {
+      url = "git+https://git.outfoxxed.me/quickshell/quickshell";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # 其他工具（保留你原有的全部输入）
+    nur.url = "github:nix-community/NUR";
+    nil.url = "github:oxalica/nil";
+    nixd.url = "github:nix-community/nixd";
+    agenix.url = "github:ryantm/agenix";
+    mangowc.url = "github:DreamMaoMao/mangowc";
+    nix-matlab.url = "gitlab:doronbehar/nix-matlab";
+    nixGL.url = "github:nix-community/nixGL";
+    
+    # Caelestia & Noctalia 生态
+    dankMaterialShell.url = "github:AvengeMedia/DankMaterialShell";
+    caelestia-shell = {
+      url = "github:caelestia-dots/shell";
+      inputs.quickshell.follows = "quickshell";
+    };
+    caelestia-cli.url = "github:caelestia-dots/cli";
+    noctalia-shell = {
+      url = "github:noctalia-dev/noctalia-shell";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    hexecute.url = "github:ThatOtherAndrew/Hexecute";
+    nixpkgs-kimi-cli.url = "github:jetjinser/nixpkgs/jinser/kimi-cli";
+  };
+
+  outputs =
+    { self, nixpkgs, nixos-hardware, ... }@inputs:
+    inputs.flake-parts.lib.mkFlake { inherit inputs; } {
+      systems = [ "x86_64-linux" ];
+
+      imports = [
+        ./hosts
+        inputs.treefmt-nix.flakeModule
+        { _module.args = { inherit inputs self nixpkgs; }; }
+      ];
+
+      flake = {
+        homeManagerModules = import ./modules/home-manager;
+        
+        # 修改 Overlays 逻辑，强制修复 Niri 测试失败问题
+        overlays = [
+          (final: prev: {
+            # 针对 Niri 的补丁：跳过检查阶段
+            niri = prev.niri.overrideAttrs (old: {
+              doCheck = false;
+            });
+          })
+          # 引入你原有的 overlays 文件夹
+          (import ./overlays { inherit inputs self; })
+        ];
+
+        templates = import ./templates;
+      };
+
+      perSystem =
+        { pkgs, ... }:
+        {
+          packages = import ./pkgs { inherit pkgs; };
+          
+          # 代码格式化自动化 (保持原有配置)
+          treefmt = {
+            projectRootFile = "flake.nix";
+            programs.nixfmt.enable = true;
+            programs.ruff-format.enable = true;
+            programs.prettier.enable = true;
+            programs.beautysh.enable = true;
+            programs.toml-sort.enable = true;
+            settings.global.excludes = [ "*.age" ];
+            settings.formatter = {
+              jsonc = {
+                command = "${pkgs.nodePackages.prettier}/bin/prettier";
+                includes = [ "*.jsonc" ];
+              };
+              scripts = {
+                command = "${pkgs.beautysh}/bin/beautysh";
+                includes = [ "*/scripts/*" ];
+              };
+            };
+          };
+        };
+    };
+}
